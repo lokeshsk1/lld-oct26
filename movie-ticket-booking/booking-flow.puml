@@ -1,0 +1,57 @@
+@startuml
+actor Customer
+participant MovieTicketBookingSystem as MTBS
+participant SearchService as SS
+participant BookingService as BS
+participant SeatLockService as SL
+participant PaymentService as PS
+participant NotificationObserver as NO
+
+== Browse ==
+Customer -> MTBS : searchMovies(city)
+MTBS -> SS : searchMovies(city)
+SS --> Customer : List<Movie>
+Customer -> MTBS : getShows(city, movie)
+MTBS -> SS : getShows(city, movie)
+SS --> Customer : List<Show> + seat map
+
+== Select seats (hold) ==
+Customer -> MTBS : selectSeats(show, seatIds)
+MTBS -> BS : createBooking(...)
+BS -> SL : lockSeats(show, seatIds, userId)
+note right of SL : synchronized(show)\nall seats free? lock all\nelse lock none
+alt seats free
+  SL --> BS : true
+  BS -> BS : amount = pricingStrategy.calculate()
+  BS --> Customer : Booking(PENDING)
+else any seat taken
+  SL --> BS : false
+  BS --> Customer : seats not available
+end
+
+== Pay (within lock timeout) ==
+Customer -> MTBS : pay(bookingId, paymentMethod)
+MTBS -> BS : confirmBooking(...)
+BS -> SL : isLockedBy(show, seatIds, userId)
+
+alt lock expired
+  SL --> BS : false
+  BS -> BS : booking.expire()
+  BS --> Customer : lock expired
+else lock held
+  SL --> BS : true
+  BS -> PS : makePayment(amount, strategy)
+  alt payment success
+    PS --> BS : Payment(SUCCESS)
+    BS -> SL : bookSeats(show, seatIds)
+    BS -> BS : booking.confirm()
+    BS -> NO : notify("Booking confirmed")
+    BS --> Customer : Booking(CONFIRMED)
+  else payment failed
+    PS --> BS : Payment(FAILED)
+    BS -> SL : unlockSeats(show, seatIds, userId)
+    BS -> BS : booking.cancel()
+    BS --> Customer : payment failed
+  end
+end
+@enduml

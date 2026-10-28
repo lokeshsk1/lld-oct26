@@ -1,0 +1,254 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum SeatType {
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum SeatStatus {
+  AVAILABLE
+  LOCKED
+  BOOKED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+' ===== Users =====
+abstract class User {
+  - id : String
+  - name : String
+  - email : String
+  - phone : String
+}
+
+class Customer {
+  - bookings : List<Booking>
+  + getBookings() : List<Booking>
+}
+
+class Admin
+
+User <|-- Customer
+User <|-- Admin
+
+' ===== Movie, Cinema, Screen, Seat =====
+class Movie {
+  - id : String
+  - title : String
+  - language : String
+  - genre : String
+  - durationMins : int
+}
+
+class Cinema {
+  - id : String
+  - name : String
+  - city : String
+  - screens : List<Screen>
+  + addScreen(screen : Screen) : void
+}
+
+class Screen {
+  - id : String
+  - name : String
+  - seats : List<Seat>
+  + addSeat(seat : Seat) : void
+}
+
+class Seat {
+  - id : String
+  - row : String
+  - number : int
+  - type : SeatType
+}
+
+Cinema "1" *-- "many" Screen
+Screen "1" *-- "many" Seat
+Seat --> SeatType
+
+' ===== Show & ShowSeat =====
+class Show {
+  - id : String
+  - movie : Movie
+  - cinema : Cinema
+  - screen : Screen
+  - startTime : LocalDateTime
+  - prices : Map<SeatType, Double>
+  - showSeats : Map<String, ShowSeat>
+  + getShowSeat(seatId : String) : ShowSeat
+  + getAvailableSeats() : List<Seat>
+  + getPrice(type : SeatType) : double
+}
+
+class ShowSeat {
+  - seat : Seat
+  - status : SeatStatus
+  - lockedBy : String
+  - lockExpiresAt : Instant
+  + isFree() : boolean
+  + isLockedBy(userId : String) : boolean
+  + lock(userId : String, expiresAt : Instant) : void
+  + book() : void
+  + release() : void
+}
+
+Show --> Movie
+Show --> Cinema
+Show --> Screen
+Show "1" *-- "many" ShowSeat
+ShowSeat --> Seat
+ShowSeat --> SeatStatus
+
+' ===== Seat locking =====
+class SeatLockService {
+  - lockTimeout : Duration
+  + lockSeats(show : Show, seatIds : List<String>, userId : String) : boolean
+  + isLockedBy(show : Show, seatIds : List<String>, userId : String) : boolean
+  + unlockSeats(show : Show, seatIds : List<String>, userId : String) : void
+  + bookSeats(show : Show, seatIds : List<String>) : void
+  + releaseBookedSeats(show : Show, seatIds : List<String>) : void
+}
+
+SeatLockService ..> Show : synchronized(show)
+
+' ===== Booking =====
+class Booking {
+  - id : String
+  - customer : Customer
+  - show : Show
+  - seatIds : List<String>
+  - totalAmount : double
+  - status : BookingStatus
+  - payment : Payment
+  + confirm() : void
+  + cancel() : void
+  + expire() : void
+}
+
+Customer "1" --> "many" Booking : makes
+Booking --> Show
+Booking --> BookingStatus
+Booking "1" --> "1" Payment
+
+' ===== Payment (Strategy) =====
+class Payment {
+  - id : String
+  - amount : double
+  - status : PaymentStatus
+  - strategy : PaymentStrategy
+  + process() : boolean
+  + refund(amount : double) : boolean
+}
+
+interface PaymentStrategy {
+  + pay(amount : double) : boolean
+  + refund(amount : double) : boolean
+}
+
+class CardPayment
+class UpiPayment
+class WalletPayment
+
+Payment --> PaymentStatus
+Payment --> PaymentStrategy
+PaymentStrategy <|.. CardPayment
+PaymentStrategy <|.. UpiPayment
+PaymentStrategy <|.. WalletPayment
+
+' ===== Pricing (Strategy) =====
+interface PricingStrategy {
+  + calculate(show : Show, seat : Seat) : double
+}
+class NormalPricing
+class WeekendPricing
+class PrimeTimePricing
+
+PricingStrategy <|.. NormalPricing
+PricingStrategy <|.. WeekendPricing
+PricingStrategy <|.. PrimeTimePricing
+
+' ===== Notification (Observer) =====
+interface NotificationObserver {
+  + notify(booking : Booking, message : String) : void
+}
+class EmailNotifier
+class SmsNotifier
+
+NotificationObserver <|.. EmailNotifier
+NotificationObserver <|.. SmsNotifier
+
+' ===== Services =====
+class SearchService {
+  - cinemas : List<Cinema>
+  - shows : List<Show>
+  + addCinema(cinema : Cinema) : void
+  + addShow(show : Show) : void
+  + searchMovies(city : String) : List<Movie>
+  + getShows(city : String, movie : Movie) : List<Show>
+}
+
+class BookingService {
+  - bookings : Map<String, Booking>
+  - seatLockService : SeatLockService
+  - paymentService : PaymentService
+  - pricingStrategy : PricingStrategy
+  - observers : List<NotificationObserver>
+  + createBooking(customer : Customer, show : Show, seatIds : List<String>) : Booking
+  + confirmBooking(bookingId : String, ps : PaymentStrategy) : Booking
+  + cancelBooking(bookingId : String) : void
+  + setPricingStrategy(p : PricingStrategy) : void
+  + addObserver(o : NotificationObserver) : void
+  - notifyAll(b : Booking, msg : String) : void
+}
+
+class PaymentService {
+  + makePayment(amount : double, ps : PaymentStrategy) : Payment
+  + refund(payment : Payment, amount : double) : boolean
+}
+
+SearchService --> Cinema
+SearchService --> Show
+BookingService --> SeatLockService
+BookingService --> PricingStrategy
+BookingService --> PaymentService
+BookingService o-- NotificationObserver
+BookingService --> Booking
+
+' ===== Facade + Singleton =====
+class MovieTicketBookingSystem <<Singleton>> {
+  - {static} instance : MovieTicketBookingSystem
+  - searchService : SearchService
+  - seatLockService : SeatLockService
+  - bookingService : BookingService
+  - MovieTicketBookingSystem()
+  + {static} getInstance() : MovieTicketBookingSystem
+  + addCinema(cinema : Cinema) : void
+  + addShow(show : Show) : void
+  + searchMovies(city : String) : List<Movie>
+  + getShows(city : String, movie : Movie) : List<Show>
+  + selectSeats(c : Customer, show : Show, seatIds : List<String>) : Booking
+  + pay(bookingId : String, ps : PaymentStrategy) : Booking
+  + cancel(bookingId : String) : void
+}
+
+MovieTicketBookingSystem --> SearchService
+MovieTicketBookingSystem --> SeatLockService
+MovieTicketBookingSystem --> BookingService
+
+@enduml

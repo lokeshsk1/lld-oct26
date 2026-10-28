@@ -1,0 +1,53 @@
+@startuml
+actor Organizer
+participant MeetingSchedulerSystem as MSS
+participant CalendarService as CS
+participant MeetingService as MS
+participant RoomService as RS
+participant RoomSelectionStrategy as STR
+participant MeetingRoom as Room
+participant NotificationObserver as NO
+actor Invitee
+
+== Find a time (optional) ==
+Organizer -> MSS : findCommonFreeSlot(users, day, length)
+MSS -> CS : findCommonFreeSlot(...)
+CS --> Organizer : Interval
+Organizer -> MSS : getBusyUsers(users, interval)
+MSS -> CS : getBusyUsers(...)
+CS --> Organizer : List<User>
+
+== Schedule ==
+Organizer -> MSS : schedule(organizer, title, invitees, interval)
+MSS -> MS : scheduleMeeting(...)
+MS -> RS : findAvailableRooms(interval, headCount)
+RS --> MS : free rooms
+MS -> STR : rank(freeRooms, headCount)
+STR --> MS : ordered rooms
+
+loop each ranked room until booked
+  MS -> Room : tryBook(interval)
+  note right of Room : synchronized\ncheck + book
+  Room --> MS : true / false
+end
+
+alt a room was booked
+  MS -> MS : create Meeting + Invitations(PENDING)
+  MS -> MS : add to organizer + invitee calendars
+  MS -> NO : notify(invitee, "Invite ...")
+  NO -> Invitee : invite
+  MS --> Organizer : Meeting(SCHEDULED)
+else no room
+  MS --> Organizer : no room available
+end
+
+== Respond ==
+Invitee -> MSS : respond(meetingId, user, accept)
+MSS -> MS : respond(...)
+alt accept
+  MS -> MS : invitation.accept()
+else decline
+  MS -> MS : invitation.decline()\nremove from invitee calendar
+end
+MS -> NO : notify(organizer, "accepted / declined")
+@enduml

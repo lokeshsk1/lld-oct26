@@ -1,0 +1,36 @@
+@startuml
+actor Guest
+participant HotelBookingSystem as HBS
+participant SearchService as SS
+participant BookingService as BS
+participant Room
+participant PaymentService as PS
+participant NotificationObserver as NO
+
+Guest -> HBS : searchHotels(city, dates, guests)
+HBS -> SS : search(...)
+SS --> HBS : List<Hotel>
+HBS --> Guest : hotels + available rooms
+
+Guest -> HBS : bookRooms(hotel, rooms, dates, paymentMethod)
+HBS -> BS : createBooking(...)
+
+group synchronized per room
+  BS -> Room : tryBook(range)
+  Room --> BS : true
+end
+
+BS -> BS : price = pricingStrategy.calculate()
+BS -> PS : makePayment(price, strategy)
+
+alt payment success
+  PS --> BS : Payment(SUCCESS)
+  BS -> BS : booking.confirm()
+  BS -> NO : notify("Booking confirmed")
+  BS --> Guest : Booking(CONFIRMED)
+else payment failed
+  PS --> BS : Payment(FAILED)
+  BS -> Room : release(range)
+  BS --> Guest : Booking failed
+end
+@enduml

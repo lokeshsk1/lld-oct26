@@ -1,0 +1,252 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum VoteType {
+  UP(+1)
+  DOWN(-1)
+}
+
+enum QuestionStatus {
+  OPEN
+  CLOSED
+}
+
+enum Role {
+  MEMBER
+  MODERATOR
+}
+
+enum Privilege {
+  UPVOTE(15)
+  COMMENT(50)
+  DOWNVOTE(125)
+}
+
+enum Badge {
+  STUDENT
+  TEACHER
+  SCHOLAR
+  NICE_ANSWER
+}
+
+enum EventType {
+  QUESTION_ASKED
+  ANSWER_POSTED
+  COMMENT_ADDED
+  VOTED
+  ANSWER_ACCEPTED
+  QUESTION_CLOSED
+  BADGE_AWARDED
+}
+
+' ===== User =====
+class User {
+  - id : String
+  - name : String
+  - role : Role
+  - reputation : int
+  - badges : Set<Badge>
+  + changeReputation(delta : int) : void
+  + can(p : Privilege) : boolean
+  + awardBadge(b : Badge) : boolean
+}
+
+User --> Role
+User --> "many" Badge
+User ..> Privilege
+
+' ===== Posts =====
+abstract class Post {
+  - id : String
+  - author : User
+  - body : String
+  - createdAt : LocalDateTime
+  - votes : Map<String, VoteType>
+  - score : int
+  - comments : List<Comment>
+  + vote(voter : User, type : VoteType) : VoteType
+  + removeVote(voter : User) : VoteType
+  + addComment(c : Comment) : void
+}
+
+class Question {
+  - title : String
+  - tags : Set<Tag>
+  - answers : List<Answer>
+  - accepted : Answer
+  - status : QuestionStatus
+  - views : AtomicInteger
+  - lastActivity : LocalDateTime
+  + addAnswer(a : Answer) : void
+  + accept(a : Answer) : Answer
+  + close(reason : String) : void
+  + reopen() : void
+  + view() : int
+}
+
+class Answer {
+  - question : Question
+  + isAccepted() : boolean
+}
+
+class Comment {
+  - id : String
+  - author : User
+  - body : String
+  - createdAt : LocalDateTime
+}
+
+class Tag {
+  - name : String
+  - questionCount : AtomicInteger
+}
+
+Post <|-- Question
+Post <|-- Answer
+Post --> User : author
+Post "1" *-- "many" Comment
+Post --> VoteType
+Question "1" *-- "many" Answer
+Question --> "0..1" Answer : accepted
+Question "many" -- "1..5" Tag
+Question --> QuestionStatus
+Comment --> User : author
+
+' ===== Reputation (Strategy) =====
+interface ReputationPolicy {
+  + authorDelta(post : Post, type : VoteType) : int
+  + voterDelta(post : Post, type : VoteType) : int
+  + acceptedAnswerBonus() : int
+  + acceptorBonus() : int
+}
+class DefaultReputationPolicy
+class BetaSiteReputationPolicy
+
+ReputationPolicy <|.. DefaultReputationPolicy
+DefaultReputationPolicy <|-- BetaSiteReputationPolicy
+
+' ===== Search (Strategy) =====
+interface SearchStrategy {
+  + matches(q : Question) : boolean
+}
+class TagSearch
+class KeywordSearch
+class AuthorSearch
+class UnansweredSearch
+
+enum SortOrder {
+  NEWEST
+  VOTES
+  ACTIVE
+  --
+  comparator : Comparator<Question>
+}
+
+SearchStrategy <|.. TagSearch
+SearchStrategy <|.. KeywordSearch
+SearchStrategy <|.. AuthorSearch
+SearchStrategy <|.. UnansweredSearch
+
+' ===== Events (Observer) =====
+class Event {
+  - type : EventType
+  - actor : User
+  - recipient : User
+  - post : Post
+  - detail : String
+}
+
+interface EventListener {
+  + onEvent(e : Event) : void
+}
+
+class EventBus {
+  - listeners : List<EventListener>
+  + subscribe(l : EventListener) : void
+  + publish(e : Event) : void
+}
+
+class NotificationListener
+class BadgeListener {
+  - bus : EventBus
+  - award(u : User, b : Badge) : void
+}
+
+Event --> EventType
+EventBus o-- EventListener
+EventBus ..> Event
+EventListener <|.. NotificationListener
+EventListener <|.. BadgeListener
+BadgeListener --> EventBus : publishes BADGE_AWARDED
+
+' ===== Services =====
+class PostService {
+  - questions : Map<String, Question>
+  - answers : Map<String, Answer>
+  - tags : Map<String, Tag>
+  + ask(u : User, title : String, body : String, tags : List<String>) : Question
+  + answer(u : User, questionId : String, body : String) : Answer
+  + comment(u : User, postId : String, body : String) : Comment
+  + accept(asker : User, answerId : String) : void
+  + close(mod : User, questionId : String, reason : String) : void
+  + reopen(mod : User, questionId : String) : void
+  + view(questionId : String) : int
+  + popularTags(n : int) : List<Tag>
+}
+
+class VoteService {
+  + vote(voter : User, postId : String, type : VoteType) : void
+  + retract(voter : User, postId : String) : void
+}
+
+class ReputationService {
+  - policy : ReputationPolicy
+  + onVote(voter : User, post : Post, prev : VoteType, now : VoteType) : void
+  + onAccept(asker : User, accepted : Answer, previous : Answer) : void
+}
+
+class SearchService {
+  + search(filter : SearchStrategy, order : SortOrder) : List<Question>
+}
+
+PostService --> Question
+PostService --> Answer
+PostService --> Tag
+PostService --> EventBus
+PostService --> ReputationService
+VoteService --> PostService
+VoteService --> ReputationService
+VoteService --> EventBus
+ReputationService --> ReputationPolicy
+SearchService --> PostService
+SearchService ..> SearchStrategy
+SearchService ..> SortOrder
+
+' ===== Facade + Singleton =====
+class StackOverflowSystem <<Singleton>> {
+  - {static} instance : StackOverflowSystem
+  - bus : EventBus
+  - posts : PostService
+  - votes : VoteService
+  - reputation : ReputationService
+  - search : SearchService
+  + {static} getInstance() : StackOverflowSystem
+  + ask(...) : Question
+  + answer(...) : Answer
+  + comment(...) : Comment
+  + accept(asker : User, answerId : String) : void
+  + upvote(u : User, postId : String) : void
+  + downvote(u : User, postId : String) : void
+  + retractVote(u : User, postId : String) : void
+  + close(mod : User, questionId : String, reason : String) : void
+  + search(filter : SearchStrategy, order : SortOrder) : List<Question>
+}
+
+StackOverflowSystem --> PostService
+StackOverflowSystem --> VoteService
+StackOverflowSystem --> SearchService
+StackOverflowSystem --> EventBus
+
+@enduml

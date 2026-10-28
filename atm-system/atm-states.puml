@@ -1,0 +1,28 @@
+@startuml
+!pragma layout smetana
+hide empty description
+
+[*] --> Idle
+
+state Idle : waiting for a card
+state CardInserted : waiting for PIN
+state Authenticated : balance / withdraw\ndeposit / transfer
+state OutOfService : no customer actions
+
+Idle --> CardInserted : insertCard\n[card valid, not blocked/expired]
+Idle --> Idle : insertCard\n[invalid card] / reject
+
+CardInserted --> Authenticated : enterPin\n[PIN correct]
+CardInserted --> CardInserted : enterPin\n[wrong, attempts left]
+CardInserted --> Idle : enterPin\n[3rd wrong] / block + retain card
+CardInserted --> Idle : ejectCard
+
+Authenticated --> Authenticated : checkBalance / withdraw\ndeposit / transfer
+Authenticated --> Idle : ejectCard
+
+Idle --> OutOfService : operator: setOutOfService
+CardInserted --> OutOfService : operator: setOutOfService\n/ return card
+Authenticated --> OutOfService : operator: setOutOfService\n/ return card
+OutOfService --> OutOfService : operator: refill
+OutOfService --> Idle : operator: backInService
+@enduml

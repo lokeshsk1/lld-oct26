@@ -1,0 +1,39 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "floors" as floors {
+  * id : INT <<PK>>
+  --
+  * number : INT <<UNIQUE>>
+}
+
+entity "spots" as spots {
+  * id : VARCHAR(10) <<PK>>
+  --
+  * floor_id : INT <<FK>>
+  * type : ENUM('SMALL','MEDIUM','LARGE')
+  * is_free : BOOLEAN
+  ..
+  INDEX(type, is_free)
+}
+
+entity "tickets" as tickets {
+  * id : BIGINT <<PK>>
+  --
+  * vehicle_number : VARCHAR(15)
+  * vehicle_type : ENUM('BIKE','CAR','TRUCK')
+  * spot_id : VARCHAR(10) <<FK>>
+  * entry_time : TIMESTAMP
+  exit_time : TIMESTAMP
+  fee : DECIMAL(8,2)
+  ..
+  UNIQUE(spot_id) WHERE exit_time IS NULL
+  UNIQUE(vehicle_number) WHERE exit_time IS NULL
+}
+
+floors ||--o{ spots
+spots ||--o{ tickets
+
+@enduml

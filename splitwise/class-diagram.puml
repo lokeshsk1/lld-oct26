@@ -1,0 +1,181 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum SplitType {
+  EQUAL
+  EXACT
+  PERCENT
+  SHARE
+}
+
+' ===== Core =====
+class User {
+  - id : String
+  - name : String
+  - email : String
+}
+
+class Money <<utility>> {
+  + {static} of(rupees : double) : long
+  + {static} fmt(paise : long) : String
+}
+
+class Group {
+  - id : String
+  - name : String
+  - members : Set<User>
+  - expenses : List<Expense>
+  - sheet : BalanceSheet
+  + addMember(u : User) : void
+  + removeMember(u : User) : void
+  + isMember(u : User) : boolean
+}
+
+class Expense {
+  - id : String
+  - description : String
+  - total : long
+  - paidBy : User
+  - splits : List<Split>
+  - type : SplitType
+  - group : Group
+  - createdAt : LocalDateTime
+  - deleted : boolean
+  + markDeleted() : void
+}
+
+class Split {
+  - user : User
+  - amount : long
+}
+
+class Settlement {
+  - id : String
+  - from : User
+  - to : User
+  - amount : long
+  - group : Group
+}
+
+class Transfer {
+  - from : User
+  - to : User
+  - amount : long
+}
+
+Group "1" o-- "many" User : members
+Group "1" *-- "1" BalanceSheet
+Group "1" o-- "many" Expense
+Expense --> User : paidBy
+Expense "1" *-- "1..*" Split
+Expense --> SplitType
+Expense --> "0..1" Group
+Split --> User
+Settlement --> User : from / to
+
+' ===== Balance sheet =====
+class BalanceSheet {
+  - owedTo : Map<User, Map<User, Long>>
+  + record(creditor : User, debtor : User, amount : long) : void
+  + owes(debtor : User, creditor : User) : long
+  + balancesOf(u : User) : Map<User, Long>
+  + net(u : User) : long
+  + netAll() : Map<User, Long>
+  + debtCount() : int
+  + simplify() : List<Transfer>
+}
+
+BalanceSheet ..> Transfer : creates
+
+' ===== Split (Strategy + Factory) =====
+interface SplitStrategy {
+  + split(total : long, users : List<User>, values : List<Double>) : List<Split>
+}
+
+abstract class WeightedSplitStrategy {
+  # byWeights(total : long, users : List<User>, weights : List<Double>) : List<Split>
+}
+
+class EqualSplitStrategy
+class PercentSplitStrategy
+class ShareSplitStrategy
+class ExactSplitStrategy
+
+class SplitStrategyFactory {
+  - {static} STRATEGIES : Map<SplitType, SplitStrategy>
+  + {static} get(type : SplitType) : SplitStrategy
+}
+
+SplitStrategy <|.. WeightedSplitStrategy
+WeightedSplitStrategy <|-- EqualSplitStrategy
+WeightedSplitStrategy <|-- PercentSplitStrategy
+WeightedSplitStrategy <|-- ShareSplitStrategy
+SplitStrategy <|.. ExactSplitStrategy
+SplitStrategyFactory --> SplitStrategy
+SplitStrategyFactory ..> SplitType
+SplitStrategy ..> Split : creates
+
+' ===== Notification (Observer) =====
+interface NotificationObserver {
+  + notify(user : User, message : String) : void
+}
+class EmailNotifier
+class PushNotifier
+class NotificationService {
+  - observers : List<NotificationObserver>
+  + notify(u : User, msg : String) : void
+}
+
+NotificationObserver <|.. EmailNotifier
+NotificationObserver <|.. PushNotifier
+NotificationService o-- NotificationObserver
+
+' ===== Services =====
+class GroupService {
+  - groups : Map<String, Group>
+  + create(name : String, members : List<User>) : Group
+  + addMember(g : Group, u : User) : void
+  + leave(g : Group, u : User) : void
+}
+
+class ExpenseService {
+  - expenses : Map<String, Expense>
+  - settlements : List<Settlement>
+  - global : BalanceSheet
+  + addExpense(desc : String, total : long, paidBy : User, users : List<User>, type : SplitType, values : List<Double>, group : Group) : Expense
+  + deleteExpense(by : User, expenseId : String) : void
+  + settleUp(from : User, to : User, amount : long, group : Group) : Settlement
+  - apply(e : Expense, sign : int) : void
+}
+
+GroupService --> Group
+ExpenseService --> Expense
+ExpenseService --> Settlement
+ExpenseService "1" *-- "1" BalanceSheet : global
+ExpenseService ..> SplitStrategyFactory
+ExpenseService --> NotificationService
+
+' ===== Facade + Singleton =====
+class SplitwiseSystem <<Singleton>> {
+  - {static} instance : SplitwiseSystem
+  - users : Map<String, User>
+  - groups : GroupService
+  - expenses : ExpenseService
+  + {static} getInstance() : SplitwiseSystem
+  + register(name : String, email : String) : User
+  + createGroup(name : String, members : List<User>) : Group
+  + leaveGroup(g : Group, u : User) : void
+  + addExpense(g : Group, desc : String, amount : double, paidBy : User, users : List<User>, type : SplitType, values : List<Double>) : Expense
+  + deleteExpense(by : User, expenseId : String) : void
+  + settleUp(from : User, to : User, amount : double, g : Group) : Settlement
+  + balancesOf(u : User) : Map<User, Long>
+  + simplify(g : Group) : List<Transfer>
+}
+
+SplitwiseSystem --> GroupService
+SplitwiseSystem --> ExpenseService
+SplitwiseSystem --> User
+
+@enduml

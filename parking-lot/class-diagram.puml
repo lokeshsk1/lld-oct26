@@ -1,0 +1,121 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum VehicleType {
+  BIKE
+  CAR
+  TRUCK
+}
+
+enum SpotType {
+  SMALL
+  MEDIUM
+  LARGE
+  --
+  {static} minimumFor(v : VehicleType) : SpotType
+  fits(v : VehicleType) : boolean
+}
+
+' ===== Core =====
+class Vehicle {
+  - number : String
+  - type : VehicleType
+}
+
+class ParkingSpot {
+  - id : String
+  - type : SpotType
+  - floor : int
+  - vehicle : Vehicle
+  + tryPark(v : Vehicle) : boolean
+  + free() : void
+  + isFree() : boolean
+}
+
+class ParkingFloor {
+  - number : int
+  - spots : List<ParkingSpot>
+  + addSpot(id : String, type : SpotType) : ParkingFloor
+}
+
+class Ticket {
+  - id : String
+  - vehicle : Vehicle
+  - spot : ParkingSpot
+  - entryTime : LocalDateTime
+  - exitTime : LocalDateTime
+  - fee : long
+  + close(at : LocalDateTime, fee : long) : void
+  + isActive() : boolean
+}
+
+Vehicle --> VehicleType
+ParkingSpot --> SpotType
+ParkingSpot --> "0..1" Vehicle : parked
+ParkingFloor "1" *-- "many" ParkingSpot
+Ticket --> Vehicle
+Ticket --> ParkingSpot
+SpotType ..> VehicleType
+
+' ===== Allocation (Strategy) =====
+interface SpotAllocationStrategy {
+  + rank(candidates : List<ParkingSpot>, v : Vehicle) : List<ParkingSpot>
+}
+class NearestFirstStrategy
+class BestFitStrategy
+
+SpotAllocationStrategy <|.. NearestFirstStrategy
+SpotAllocationStrategy <|.. BestFitStrategy
+
+' ===== Fee (Strategy) =====
+interface FeeStrategy {
+  + calculate(type : VehicleType, parked : Duration) : long
+}
+class HourlyFee {
+  - ratePerHour : Map<VehicleType, Long>
+}
+
+FeeStrategy <|.. HourlyFee
+
+' ===== Extension point (Observer) =====
+interface ParkingListener {
+  + onPark(t : Ticket) : void
+  + onUnpark(t : Ticket) : void
+}
+class DisplayBoard {
+  + show() : void
+}
+
+ParkingListener <|.. DisplayBoard
+
+' ===== Facade + Singleton =====
+class ParkingLotSystem <<Singleton>> {
+  - {static} instance : ParkingLotSystem
+  - floors : List<ParkingFloor>
+  - activeTickets : Map<String, Ticket>
+  - parkedVehicles : Map<String, Ticket>
+  - listeners : List<ParkingListener>
+  - allocation : SpotAllocationStrategy
+  - feeStrategy : FeeStrategy
+  + {static} getInstance() : ParkingLotSystem
+  + addFloor(f : ParkingFloor) : void
+  + park(v : Vehicle, at : LocalDateTime) : Ticket
+  + unpark(ticketId : String, at : LocalDateTime) : Ticket
+  + availability() : Map<SpotType, Long>
+  + freeSpotsFor(v : VehicleType) : long
+  + findByVehicle(number : String) : Ticket
+  + setAllocationStrategy(s : SpotAllocationStrategy) : void
+  + setFeeStrategy(f : FeeStrategy) : void
+  + addListener(l : ParkingListener) : void
+}
+
+ParkingLotSystem "1" *-- "many" ParkingFloor
+ParkingLotSystem --> "many" Ticket : active
+ParkingLotSystem --> SpotAllocationStrategy
+ParkingLotSystem --> FeeStrategy
+ParkingLotSystem o-- ParkingListener
+DisplayBoard --> ParkingLotSystem : reads availability
+
+@enduml

@@ -1,0 +1,231 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum VehicleType {
+  BIKE
+  AUTO
+  MINI
+  SEDAN
+  SUV
+  --
+  baseFare : double
+  perKm : double
+}
+
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  ON_TRIP
+}
+
+enum RideStatus {
+  REQUESTED
+  DRIVER_ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+' ===== Location =====
+class Location {
+  - name : String
+  - lat : double
+  - lng : double
+  + distanceKm(other : Location) : double
+}
+
+' ===== Users =====
+abstract class User {
+  - id : String
+  - name : String
+  - phone : String
+  - ratingSum : double
+  - ratingCount : int
+  + addRating(stars : int) : void
+  + getRating() : double
+}
+
+class Rider {
+  - rides : List<Ride>
+  + addRide(r : Ride) : void
+  + getRides() : List<Ride>
+}
+
+class Driver {
+  - vehicle : Vehicle
+  - location : Location
+  - status : DriverStatus
+  + goOnline() : void
+  + goOffline() : void
+  + tryAssign() : boolean
+  + release() : void
+  + isAvailable() : boolean
+  + updateLocation(l : Location) : void
+}
+
+class Vehicle {
+  - number : String
+  - model : String
+  - type : VehicleType
+}
+
+User <|-- Rider
+User <|-- Driver
+Driver "1" *-- "1" Vehicle
+Driver --> Location
+Driver --> DriverStatus
+Vehicle --> VehicleType
+
+' ===== Ride =====
+class Ride {
+  - id : String
+  - rider : Rider
+  - driver : Driver
+  - pickup : Location
+  - drop : Location
+  - vehicleType : VehicleType
+  - distanceKm : double
+  - fare : double
+  - otp : String
+  - status : RideStatus
+  - rejectedDriverIds : Set<String>
+  - payment : Payment
+  + assign(d : Driver, otp : String) : void
+  + unassign() : Driver
+  + start(otp : String) : void
+  + complete(p : Payment) : void
+  + cancel() : void
+}
+
+Rider "1" --> "many" Ride : books
+Ride --> Driver
+Ride --> Location : pickup / drop
+Ride --> RideStatus
+Ride "1" --> "0..1" Payment
+
+' ===== Payment (Strategy) =====
+class Payment {
+  - id : String
+  - amount : double
+  - status : PaymentStatus
+  - strategy : PaymentStrategy
+  + process() : boolean
+}
+
+interface PaymentStrategy {
+  + pay(amount : double) : boolean
+  + refund(amount : double) : boolean
+}
+
+class CashPayment
+class CardPayment
+class UpiPayment
+class WalletPayment
+
+Payment --> PaymentStatus
+Payment --> PaymentStrategy
+PaymentStrategy <|.. CashPayment
+PaymentStrategy <|.. CardPayment
+PaymentStrategy <|.. UpiPayment
+PaymentStrategy <|.. WalletPayment
+
+' ===== Fare (Strategy + Decorator) =====
+interface FareStrategy {
+  + calculate(type : VehicleType, distanceKm : double) : double
+}
+class StandardFare
+class SurgeFare {
+  - base : FareStrategy
+  - multiplier : double
+}
+
+FareStrategy <|.. StandardFare
+FareStrategy <|.. SurgeFare
+SurgeFare o-- FareStrategy : wraps
+
+' ===== Driver matching (Strategy) =====
+interface DriverMatchingStrategy {
+  + rank(candidates : List<Driver>, pickup : Location) : List<Driver>
+}
+class NearestDriverStrategy
+class HighestRatedStrategy
+
+DriverMatchingStrategy <|.. NearestDriverStrategy
+DriverMatchingStrategy <|.. HighestRatedStrategy
+
+' ===== Notification (Observer) =====
+interface NotificationObserver {
+  + notify(recipient : User, message : String) : void
+}
+class SmsNotifier
+class PushNotifier
+
+NotificationObserver <|.. SmsNotifier
+NotificationObserver <|.. PushNotifier
+
+' ===== Services =====
+class DriverService {
+  - drivers : Map<String, Driver>
+  + register(d : Driver) : void
+  + findNearbyDrivers(pickup : Location, type : VehicleType, radiusKm : double) : List<Driver>
+}
+
+class RideService {
+  - rides : Map<String, Ride>
+  - driverService : DriverService
+  - matchingStrategy : DriverMatchingStrategy
+  - fareStrategy : FareStrategy
+  - searchRadiusKm : double
+  - observers : List<NotificationObserver>
+  + estimateFare(pickup : Location, drop : Location, type : VehicleType) : double
+  + requestRide(rider : Rider, pickup : Location, drop : Location, type : VehicleType) : Ride
+  + startRide(rideId : String, otp : String) : void
+  + completeRide(rideId : String, ps : PaymentStrategy) : Ride
+  + cancelRide(rideId : String, by : User) : void
+  + rateDriver(rideId : String, stars : int) : void
+  + rateRider(rideId : String, stars : int) : void
+  - assignDriver(ride : Ride) : void
+}
+
+class PaymentService {
+  + makePayment(amount : double, ps : PaymentStrategy) : Payment
+}
+
+DriverService --> Driver
+RideService --> DriverService
+RideService --> DriverMatchingStrategy
+RideService --> FareStrategy
+RideService --> PaymentService
+RideService o-- NotificationObserver
+RideService --> Ride
+
+' ===== Facade + Singleton =====
+class CabBookingSystem <<Singleton>> {
+  - {static} instance : CabBookingSystem
+  - driverService : DriverService
+  - rideService : RideService
+  - CabBookingSystem()
+  + {static} getInstance() : CabBookingSystem
+  + registerDriver(d : Driver) : void
+  + estimateFare(pickup : Location, drop : Location, type : VehicleType) : double
+  + requestRide(r : Rider, pickup : Location, drop : Location, type : VehicleType) : Ride
+  + startRide(rideId : String, otp : String) : void
+  + completeRide(rideId : String, ps : PaymentStrategy) : Ride
+  + cancelRide(rideId : String, by : User) : void
+  + rateDriver(rideId : String, stars : int) : void
+  + rateRider(rideId : String, stars : int) : void
+}
+
+CabBookingSystem --> DriverService
+CabBookingSystem --> RideService
+
+@enduml

@@ -1,0 +1,67 @@
+@startuml
+actor Rider
+participant CabBookingSystem as CBS
+participant RideService as RS
+participant FareStrategy as FS
+participant DriverService as DS
+participant DriverMatchingStrategy as DMS
+participant Driver
+participant PaymentService as PS
+participant NotificationObserver as NO
+
+== Request ==
+Rider -> CBS : requestRide(pickup, drop, type)
+CBS -> RS : requestRide(...)
+RS -> FS : calculate(type, distance)
+FS --> RS : upfront fare
+RS -> DS : findNearbyDrivers(pickup, type, radius)
+DS --> RS : available drivers
+RS -> DMS : rank(drivers, pickup)
+DMS --> RS : ordered drivers
+
+loop each ranked driver until assigned
+  RS -> Driver : tryAssign()
+  note right of Driver : synchronized\nAVAILABLE -> ON_TRIP
+  Driver --> RS : true / false
+end
+
+alt driver assigned
+  RS -> RS : ride.assign(driver, OTP)
+  RS -> NO : notify(rider, "driver + OTP")
+  RS -> NO : notify(driver, "pick up rider")
+  RS --> Rider : Ride(DRIVER_ASSIGNED)
+else nobody free
+  RS -> RS : ride.cancel()
+  RS --> Rider : no drivers available
+end
+
+== Driver cancels (optional) ==
+Driver -> CBS : cancelRide(rideId, driver)
+CBS -> RS : cancelRide(...)
+RS -> RS : ride.unassign()  (driver added to rejected set)
+RS -> Driver : release()
+RS -> RS : assignDriver(ride)  (re-match, skipping rejected)
+
+== Trip ==
+Driver -> CBS : startRide(rideId, otp)
+CBS -> RS : startRide(...)
+RS -> RS : ride.start(otp)  (OTP must match)
+RS -> NO : notify(rider, "ride started")
+
+Driver -> CBS : completeRide(rideId, paymentMethod)
+CBS -> RS : completeRide(...)
+RS -> PS : makePayment(fare, strategy)
+alt payment success
+  PS --> RS : Payment(SUCCESS)
+  RS -> RS : ride.complete(payment)
+  RS -> Driver : updateLocation(drop), release()
+  RS -> NO : notify(rider + driver, "trip complete")
+else payment failed
+  PS --> RS : Payment(FAILED)
+  RS --> Rider : retry with another method (ride stays IN_PROGRESS)
+end
+
+== Rate ==
+Rider -> CBS : rateDriver(rideId, stars)
+Driver -> CBS : rateRider(rideId, stars)
+@enduml

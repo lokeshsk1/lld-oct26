@@ -1,0 +1,52 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * email : VARCHAR(150) <<UNIQUE>>
+  * created_at : TIMESTAMP
+}
+
+entity "meeting_rooms" as rooms {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100) <<UNIQUE>>
+  * capacity : INT
+  * floor : INT
+}
+
+entity "meetings" as meetings {
+  * id : BIGINT <<PK>>
+  --
+  * title : VARCHAR(200)
+  * organizer_id : BIGINT <<FK>>
+  * room_id : BIGINT <<FK>>
+  * start_time : TIMESTAMP
+  * end_time : TIMESTAMP
+  * status : ENUM('SCHEDULED','CANCELLED')
+  * created_at : TIMESTAMP
+  ..
+  INDEX(room_id, start_time, end_time)
+  CHECK(end_time > start_time)
+}
+
+entity "meeting_participants" as participants {
+  * meeting_id : BIGINT <<PK, FK>>
+  * user_id : BIGINT <<PK, FK>>
+  --
+  * status : ENUM('PENDING','ACCEPTED','DECLINED')
+  responded_at : TIMESTAMP
+  ..
+  INDEX(user_id)
+}
+
+users ||--o{ meetings : organizes
+rooms ||--o{ meetings
+meetings ||--o{ participants
+users ||--o{ participants : invited
+
+@enduml

@@ -1,0 +1,179 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum AccountType {
+  SAVINGS
+  CURRENT
+}
+
+enum CardStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum TransactionType {
+  WITHDRAWAL
+  DEPOSIT
+  BALANCE_INQUIRY
+  TRANSFER
+}
+
+enum TransactionStatus {
+  SUCCESS
+  FAILED
+}
+
+' ===== Card & Account =====
+class Card {
+  - cardNumber : String
+  - holderName : String
+  - expiry : YearMonth
+  + isExpired() : boolean
+}
+
+class Account {
+  - accountNumber : String
+  - holderName : String
+  - type : AccountType
+  - balance : long
+  - dailyWithdrawLimit : long
+  - withdrawnToday : long
+  - limitDay : LocalDate
+  + withdraw(amount : long) : void
+  + debit(amount : long) : void
+  + deposit(amount : long) : void
+  + getBalance() : long
+}
+
+class CardInfo {
+  - cardNumber : String
+  - accountNumber : String
+  - pinHash : String
+  - status : CardStatus
+  - failedAttempts : int
+  + recordFailure(maxAttempts : int) : void
+  + resetFailures() : void
+}
+
+class Transaction {
+  - id : String
+  - type : TransactionType
+  - accountNumber : String
+  - amount : long
+  - status : TransactionStatus
+  - atmId : String
+  - timestamp : LocalDateTime
+}
+
+Account --> AccountType
+CardInfo --> CardStatus
+CardInfo ..> Account : accountNumber
+Transaction --> TransactionType
+Transaction --> TransactionStatus
+
+' ===== Bank (Singleton) =====
+class BankService <<Singleton>> {
+  - {static} instance : BankService
+  - accounts : Map<String, Account>
+  - cards : Map<String, CardInfo>
+  - transactions : List<Transaction>
+  - observers : List<NotificationObserver>
+  + {static} getInstance() : BankService
+  + openAccount(a : Account) : void
+  + issueCard(card : Card, accountNumber : String, pin : String) : void
+  + validateCard(card : Card) : void
+  + authenticate(card : Card, pin : String) : boolean
+  + getAccount(card : Card) : Account
+  + withdraw(a : Account, amount : long, atmId : String) : Transaction
+  + deposit(a : Account, amount : long, atmId : String) : Transaction
+  + balanceInquiry(a : Account, atmId : String) : long
+  + transfer(from : Account, toAccount : String, amount : long, atmId : String) : Transaction
+}
+
+BankService "1" o-- "many" Account
+BankService "1" *-- "many" CardInfo
+BankService "1" *-- "many" Transaction
+BankService o-- NotificationObserver
+
+' ===== Notification (Observer) =====
+interface NotificationObserver {
+  + notify(account : Account, message : String) : void
+}
+class SmsNotifier
+class EmailNotifier
+
+NotificationObserver <|.. SmsNotifier
+NotificationObserver <|.. EmailNotifier
+
+' ===== Cash dispenser (Chain of Responsibility) =====
+class CashDispenser {
+  - notes : Map<Integer, Integer>
+  - chain : NoteDispenser
+  + load(denomination : int, count : int) : void
+  + reserve(amount : long) : Map<Integer, Integer>
+  + restore(plan : Map<Integer, Integer>) : void
+  + totalCash() : long
+}
+
+class NoteDispenser {
+  - denomination : int
+  - next : NoteDispenser
+  + setNext(next : NoteDispenser) : NoteDispenser
+  + plan(remaining : long, inventory : Map, out : Map) : boolean
+}
+
+CashDispenser --> NoteDispenser : chain head
+NoteDispenser --> NoteDispenser : next\n(500 -> 200 -> 100)
+
+' ===== ATM states (State) =====
+interface ATMState {
+  + name() : String
+  + insertCard(atm : ATM, card : Card) : void
+  + enterPin(atm : ATM, pin : String) : void
+  + checkBalance(atm : ATM) : long
+  + withdraw(atm : ATM, amount : long) : Map<Integer, Integer>
+  + deposit(atm : ATM, amount : long) : void
+  + transfer(atm : ATM, toAccount : String, amount : long) : void
+  + ejectCard(atm : ATM) : void
+}
+
+class IdleState
+class CardInsertedState
+class AuthenticatedState
+class OutOfServiceState
+
+ATMState <|.. IdleState
+ATMState <|.. CardInsertedState
+ATMState <|.. AuthenticatedState
+ATMState <|.. OutOfServiceState
+
+' ===== ATM (context) =====
+class ATM {
+  - id : String
+  - location : String
+  - bank : BankService
+  - dispenser : CashDispenser
+  - state : ATMState
+  - currentCard : Card
+  - currentAccount : Account
+  + insertCard(card : Card) : void
+  + enterPin(pin : String) : void
+  + checkBalance() : long
+  + withdraw(amount : long) : Map<Integer, Integer>
+  + deposit(amount : long) : void
+  + transfer(toAccount : String, amount : long) : void
+  + ejectCard() : void
+  + setOutOfService() : void
+  + refill(denomination : int, count : int) : void
+  + backInService() : void
+}
+
+ATM "1" *-- "1" CashDispenser
+ATM --> ATMState : current state
+ATM --> BankService
+ATM --> Card : current card
+ATM --> Account : current account
+
+@enduml

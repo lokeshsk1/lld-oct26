@@ -1,0 +1,77 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * email : VARCHAR(150) <<UNIQUE>>
+  * phone : VARCHAR(20)
+  * role : ENUM('GUEST','ADMIN')
+  * created_at : TIMESTAMP
+}
+
+entity "hotels" as hotels {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(150)
+  * city : VARCHAR(100) <<INDEX>>
+  * address : VARCHAR(255)
+}
+
+entity "rooms" as rooms {
+  * id : BIGINT <<PK>>
+  --
+  * hotel_id : BIGINT <<FK>>
+  * room_number : VARCHAR(10)
+  * type : ENUM('SINGLE','DOUBLE','DELUXE','SUITE')
+  * base_price : DECIMAL(10,2)
+  * capacity : INT
+  ..
+  UNIQUE(hotel_id, room_number)
+}
+
+entity "bookings" as bookings {
+  * id : BIGINT <<PK>>
+  --
+  * user_id : BIGINT <<FK>>
+  * hotel_id : BIGINT <<FK>>
+  * check_in : DATE
+  * check_out : DATE
+  * total_amount : DECIMAL(10,2)
+  * status : ENUM('PENDING','CONFIRMED','CANCELLED','COMPLETED')
+  * created_at : TIMESTAMP
+}
+
+entity "booking_rooms" as booking_rooms {
+  * booking_id : BIGINT <<PK, FK>>
+  * room_id : BIGINT <<PK, FK>>
+  --
+  * check_in : DATE
+  * check_out : DATE
+  * price : DECIMAL(10,2)
+  ..
+  INDEX(room_id, check_in, check_out)
+}
+
+entity "payments" as payments {
+  * id : BIGINT <<PK>>
+  --
+  * booking_id : BIGINT <<FK>>
+  * amount : DECIMAL(10,2)
+  * method : ENUM('CARD','UPI','WALLET')
+  * status : ENUM('PENDING','SUCCESS','FAILED','REFUNDED')
+  transaction_ref : VARCHAR(100)
+  * created_at : TIMESTAMP
+}
+
+hotels ||--o{ rooms
+users ||--o{ bookings
+hotels ||--o{ bookings
+bookings ||--|{ booking_rooms
+rooms ||--o{ booking_rooms
+bookings ||--o{ payments
+
+@enduml

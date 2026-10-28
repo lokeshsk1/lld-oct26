@@ -1,0 +1,39 @@
+@startuml
+actor Member
+participant LibrarySystem as LS
+participant MemberService as MS
+participant CatalogService as CS
+participant LoanService as LoanS
+participant BookItem as Item
+participant LoanListener as LL
+
+== Search ==
+Member -> LS : search(new TitleSearch(), "code")
+LS -> CS : search(strategy, query)
+CS --> Member : matching books
+
+== Borrow ==
+Member -> LS : borrow(memberId, barcode)
+LS -> MS : getMember(memberId)
+LS -> CS : getItem(barcode)
+LS -> LoanS : borrow(member, item)
+LoanS -> Item : tryCheckout()
+note right of Item : synchronized\nAVAILABLE -> LOANED
+alt copy was free
+  Item --> LoanS : true
+  LoanS -> LoanS : create Loan (issue today, due + 14)\nactiveLoans[barcode] = loan
+  LoanS -> LL : onBorrow(loan)
+  LoanS --> Member : loan
+else already loaned
+  Item --> LoanS : false
+  LoanS --> Member : error "not available"
+end
+
+== Return ==
+Member -> LS : returnBook(barcode)
+LS -> LoanS : returnBook(item)
+LoanS -> LoanS : remove active loan,\nloan.close(today)
+LoanS -> Item : markAvailable()
+LoanS -> LL : onReturn(loan)
+note right of LL : fines, reservations,\nnotifications plug in here
+@enduml

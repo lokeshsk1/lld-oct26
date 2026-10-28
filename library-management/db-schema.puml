@@ -1,0 +1,46 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "books" as books {
+  * isbn : VARCHAR(17) <<PK>>
+  --
+  * title : VARCHAR(300) <<INDEX>>
+  * author : VARCHAR(150) <<INDEX>>
+}
+
+entity "book_items" as items {
+  * barcode : VARCHAR(30) <<PK>>
+  --
+  * isbn : VARCHAR(17) <<FK>>
+  * status : ENUM('AVAILABLE','LOANED')
+  ..
+  INDEX(isbn, status)
+}
+
+entity "members" as members {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * email : VARCHAR(150) <<UNIQUE>>
+}
+
+entity "loans" as loans {
+  * id : BIGINT <<PK>>
+  --
+  * barcode : VARCHAR(30) <<FK>>
+  * member_id : BIGINT <<FK>>
+  * issue_date : DATE
+  * due_date : DATE
+  return_date : DATE
+  ..
+  UNIQUE(barcode) WHERE return_date IS NULL
+  INDEX(member_id, return_date)
+}
+
+books ||--o{ items : copies
+items ||--o{ loans
+members ||--o{ loans
+
+@enduml

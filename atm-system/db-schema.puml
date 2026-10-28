@@ -1,0 +1,77 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "customers" as customers {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * phone : VARCHAR(20)
+  * email : VARCHAR(150)
+}
+
+entity "accounts" as accounts {
+  * account_number : VARCHAR(20) <<PK>>
+  --
+  * customer_id : BIGINT <<FK>>
+  * type : ENUM('SAVINGS','CURRENT')
+  * balance : DECIMAL(15,2)
+  * daily_withdraw_limit : DECIMAL(15,2)
+  * version : BIGINT
+  ..
+  CHECK(balance >= 0)
+}
+
+entity "cards" as cards {
+  * card_number : VARCHAR(19) <<PK>>
+  --
+  * account_number : VARCHAR(20) <<FK>>
+  * pin_hash : VARCHAR(100)
+  * expiry : DATE
+  * status : ENUM('ACTIVE','BLOCKED')
+  * failed_attempts : INT
+}
+
+entity "atms" as atms {
+  * id : VARCHAR(20) <<PK>>
+  --
+  * location : VARCHAR(255)
+  * status : ENUM('IN_SERVICE','OUT_OF_SERVICE')
+  last_refilled_at : TIMESTAMP
+}
+
+entity "atm_cash" as atm_cash {
+  * atm_id : VARCHAR(20) <<PK, FK>>
+  * denomination : INT <<PK>>
+  --
+  * note_count : INT
+  ..
+  CHECK(note_count >= 0)
+}
+
+entity "transactions" as txns {
+  * id : BIGINT <<PK>>
+  --
+  * account_number : VARCHAR(20) <<FK>>
+  card_number : VARCHAR(19) <<FK>>
+  atm_id : VARCHAR(20) <<FK>>
+  * type : ENUM('WITHDRAWAL','DEPOSIT','BALANCE_INQUIRY','TRANSFER')
+  * amount : DECIMAL(15,2)
+  * status : ENUM('SUCCESS','FAILED')
+  to_account_number : VARCHAR(20) <<FK>>
+  balance_after : DECIMAL(15,2)
+  failure_reason : VARCHAR(200)
+  * created_at : TIMESTAMP
+  ..
+  INDEX(account_number, created_at)
+}
+
+customers ||--o{ accounts
+accounts ||--o{ cards
+accounts ||--o{ txns
+cards ||--o{ txns
+atms ||--|{ atm_cash
+atms ||--o{ txns
+
+@enduml

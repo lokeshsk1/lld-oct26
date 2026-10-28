@@ -1,0 +1,37 @@
+@startuml
+actor Driver
+participant ParkingLotSystem as Lot
+participant SpotAllocationStrategy as Alloc
+participant ParkingSpot as Spot
+participant FeeStrategy as Fee
+participant ParkingListener as PL
+
+== Park ==
+Driver -> Lot : park(vehicle, entryTime)
+Lot -> Lot : vehicle already inside? -> reject
+Lot -> Lot : free spots that fit\n(spot size >= vehicle size)
+Lot -> Alloc : rank(candidates, vehicle)
+Alloc --> Lot : ordered spots
+loop each ranked spot
+  Lot -> Spot : tryPark(vehicle)
+  note right of Spot : synchronized\nfree? -> occupy
+  Spot --> Lot : true / false (lost the race)
+end
+alt a spot was taken
+  Lot -> Lot : create Ticket, activeTickets[id] = ticket
+  Lot -> PL : onPark(ticket)
+  Lot --> Driver : ticket
+else nothing fits
+  Lot --> Driver : "No free spot"
+end
+
+== Unpark ==
+Driver -> Lot : unpark(ticketId, exitTime)
+Lot -> Lot : remove active ticket (unknown -> reject)
+Lot -> Fee : calculate(vehicleType, exit - entry)
+Fee --> Lot : fee (started hours x rate)
+Lot -> Spot : free()
+Lot -> PL : onUnpark(ticket)
+note right of PL : display board, payment,\nalerts plug in here
+Lot --> Driver : ticket with fee
+@enduml

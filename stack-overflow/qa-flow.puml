@@ -1,0 +1,56 @@
+@startuml
+actor Asker
+actor Answerer
+actor Voter
+participant StackOverflowSystem as SO
+participant PostService as PS
+participant VoteService as VS
+participant "Post\n(Question / Answer)" as Post
+participant ReputationService as RS
+participant EventBus as Bus
+participant BadgeListener as BL
+participant NotificationListener as NL
+
+== Ask + answer ==
+Asker -> SO : ask(title, body, tags)
+SO -> PS : ask(...)
+PS -> PS : title >= 15 chars, 1-5 tags\nget-or-create Tag, count++
+PS -> Bus : publish(QUESTION_ASKED)
+
+Answerer -> SO : answer(questionId, body)
+SO -> PS : answer(...)
+PS -> Post : question.addAnswer(a)  (rejects if CLOSED)
+PS -> Bus : publish(ANSWER_POSTED -> asker)
+Bus -> NL : onEvent
+NL -> Asker : "X answered your question"
+
+== Vote ==
+Voter -> SO : upvote(postId)
+SO -> VS : vote(voter, postId, UP)
+VS -> VS : not own post?\nhas UPVOTE privilege (15 rep)?
+VS -> Post : vote(voter, UP)
+note right of Post : synchronized\none vote per user,\nscore += new - previous
+Post --> VS : previous vote (or null)
+VS -> RS : onVote(voter, post, prev, UP)
+RS -> RS : undo prev effect, apply new\n(author +10, downvote: author -2, voter -1)
+VS -> Bus : publish(VOTED)
+Bus -> BL : onEvent
+BL -> BL : score >= 1 -> STUDENT / TEACHER\nanswer score >= 10 -> NICE_ANSWER
+opt badge newly awarded
+  BL -> Bus : publish(BADGE_AWARDED)
+  Bus -> NL : onEvent
+  NL -> Answerer : "You earned a badge"
+end
+
+== Accept ==
+Asker -> SO : accept(answerId)
+SO -> PS : accept(asker, answerId)
+PS -> PS : asker owns the question?
+PS -> Post : question.accept(answer)
+Post --> PS : previously accepted (or null)
+PS -> RS : onAccept(asker, answer, previous)
+RS -> RS : previous author -15\nnew author +15, asker +2 (first time)
+PS -> Bus : publish(ANSWER_ACCEPTED)
+Bus -> BL : SCHOLAR badge for asker
+Bus -> NL : notify answerer
+@enduml

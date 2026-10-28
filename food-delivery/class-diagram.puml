@@ -1,0 +1,295 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum OrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  READY_FOR_PICKUP
+  PICKED_UP
+  DELIVERED
+  CANCELLED
+  --
+  canMoveTo(next : OrderStatus) : boolean
+}
+
+enum PartnerStatus {
+  OFFLINE
+  AVAILABLE
+  BUSY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+' ===== Location =====
+class Location {
+  - name : String
+  - lat : double
+  - lng : double
+  + distanceKm(other : Location) : double
+}
+
+' ===== Users =====
+abstract class User {
+  - id : String
+  - name : String
+  - phone : String
+}
+
+class Customer {
+  - address : Location
+  - cart : Cart
+  - orders : List<Order>
+}
+
+class DeliveryPartner {
+  - location : Location
+  - status : PartnerStatus
+  - deliveriesToday : int
+  + goOnline() : void
+  + goOffline() : void
+  + tryAssign() : boolean
+  + release() : void
+  + completeDelivery(at : Location) : void
+}
+
+User <|-- Customer
+User <|-- DeliveryPartner
+Customer --> Location : address
+Customer "1" *-- "1" Cart
+DeliveryPartner --> Location
+DeliveryPartner --> PartnerStatus
+
+' ===== Restaurant & Menu =====
+class Restaurant {
+  - id : String
+  - name : String
+  - cuisine : String
+  - location : Location
+  - menu : Map<String, MenuItem>
+  - open : boolean
+  + addMenuItem(item : MenuItem) : void
+  + getMenuItem(id : String) : MenuItem
+}
+
+class MenuItem {
+  - id : String
+  - name : String
+  - price : double
+  - veg : boolean
+  - stock : int
+  - available : boolean
+  + tryReserve(qty : int) : boolean
+  + release(qty : int) : void
+}
+
+Restaurant "1" *-- "many" MenuItem
+Restaurant --> Location
+
+' ===== Cart =====
+class Cart {
+  - restaurant : Restaurant
+  - items : Map<MenuItem, Integer>
+  + add(r : Restaurant, item : MenuItem, qty : int) : void
+  + remove(item : MenuItem) : void
+  + clear() : void
+}
+
+Cart --> "0..1" Restaurant : one restaurant only
+Cart --> "many" MenuItem
+
+' ===== Order =====
+class Order {
+  - id : String
+  - customer : Customer
+  - restaurant : Restaurant
+  - items : List<OrderItem>
+  - reserved : Map<MenuItem, Integer>
+  - deliveryAddress : Location
+  - bill : Bill
+  - status : OrderStatus
+  - partner : DeliveryPartner
+  - payment : Payment
+  - placedAt : LocalDateTime
+  + moveTo(next : OrderStatus) : void
+  + assignPartner(p : DeliveryPartner) : boolean
+}
+
+class OrderItem {
+  - name : String
+  - price : double
+  - qty : int
+  + total() : double
+}
+
+class Bill {
+  - subtotal : double
+  - deliveryFee : double
+  - tax : double
+  - discount : double
+  - total : double
+}
+
+Customer "1" --> "many" Order : places
+Order --> Restaurant
+Order "1" *-- "many" OrderItem : price snapshot
+Order "1" *-- "1" Bill
+Order --> "0..1" DeliveryPartner
+Order --> OrderStatus
+Order "1" --> "1" Payment
+
+' ===== Payment (Strategy) =====
+class Payment {
+  - amount : double
+  - status : PaymentStatus
+  - strategy : PaymentStrategy
+  + process() : boolean
+  + refund() : void
+}
+
+interface PaymentStrategy {
+  + pay(amount : double) : boolean
+  + refund(amount : double) : boolean
+}
+
+class UpiPayment
+class CardPayment
+class WalletPayment
+class CashOnDelivery
+
+Payment --> PaymentStatus
+Payment --> PaymentStrategy
+PaymentStrategy <|.. UpiPayment
+PaymentStrategy <|.. CardPayment
+PaymentStrategy <|.. WalletPayment
+PaymentStrategy <|.. CashOnDelivery
+
+' ===== Delivery fee (Strategy + Decorator) =====
+interface DeliveryFeeStrategy {
+  + calculate(distanceKm : double, subtotal : double) : double
+}
+class StandardDeliveryFee
+class FreeDeliveryAbove {
+  - threshold : double
+  - base : DeliveryFeeStrategy
+}
+
+DeliveryFeeStrategy <|.. StandardDeliveryFee
+DeliveryFeeStrategy <|.. FreeDeliveryAbove
+FreeDeliveryAbove o-- DeliveryFeeStrategy : wraps
+
+' ===== Coupons (Strategy) =====
+interface Coupon {
+  + getCode() : String
+  + discount(subtotal : double) : double
+}
+class FlatCoupon {
+  - amount : double
+  - minOrder : double
+}
+class PercentCoupon {
+  - percent : double
+  - maxDiscount : double
+  - minOrder : double
+}
+
+Coupon <|.. FlatCoupon
+Coupon <|.. PercentCoupon
+
+' ===== Partner assignment (Strategy) =====
+interface PartnerAssignmentStrategy {
+  + rank(partners : List<DeliveryPartner>, restaurant : Location) : List<DeliveryPartner>
+}
+class NearestPartnerStrategy
+class FairDistributionStrategy
+
+PartnerAssignmentStrategy <|.. NearestPartnerStrategy
+PartnerAssignmentStrategy <|.. FairDistributionStrategy
+
+' ===== Notification (Observer) =====
+interface NotificationObserver {
+  + notify(recipient : String, message : String) : void
+}
+class PushNotifier
+class SmsNotifier
+class NotificationService {
+  - observers : List<NotificationObserver>
+  + notify(to : String, msg : String) : void
+}
+
+NotificationObserver <|.. PushNotifier
+NotificationObserver <|.. SmsNotifier
+NotificationService o-- NotificationObserver
+
+' ===== Services =====
+class RestaurantService {
+  - restaurants : Map<String, Restaurant>
+  + addRestaurant(r : Restaurant) : void
+  + search(near : Location, radiusKm : double) : List<Restaurant>
+}
+
+class DeliveryService {
+  - partners : List<DeliveryPartner>
+  - waitingForPartner : Deque<Order>
+  - strategy : PartnerAssignmentStrategy
+  + register(p : DeliveryPartner) : void
+  + assign(order : Order) : void
+  + onPartnerAvailable(p : DeliveryPartner) : void
+  + removeWaiting(o : Order) : void
+}
+
+class OrderService {
+  - orders : Map<String, Order>
+  - coupons : Map<String, Coupon>
+  - feeStrategy : DeliveryFeeStrategy
+  + placeOrder(c : Customer, coupon : String, ps : PaymentStrategy) : Order
+  + accept(orderId : String) : void
+  + reject(orderId : String, reason : String) : void
+  + startPreparing(orderId : String) : void
+  + markReady(orderId : String) : void
+  + pickUp(p : DeliveryPartner, orderId : String) : void
+  + deliver(p : DeliveryPartner, orderId : String) : void
+  + cancelByCustomer(c : Customer, orderId : String) : void
+}
+
+RestaurantService --> Restaurant
+DeliveryService --> DeliveryPartner
+DeliveryService --> PartnerAssignmentStrategy
+DeliveryService --> NotificationService
+OrderService --> Order
+OrderService --> DeliveryService
+OrderService --> DeliveryFeeStrategy
+OrderService --> Coupon
+OrderService --> NotificationService
+
+' ===== Facade + Singleton =====
+class FoodDeliverySystem <<Singleton>> {
+  - {static} instance : FoodDeliverySystem
+  - restaurantService : RestaurantService
+  - deliveryService : DeliveryService
+  - orderService : OrderService
+  + {static} getInstance() : FoodDeliverySystem
+  + searchRestaurants(near : Location, radiusKm : double) : List<Restaurant>
+  + addToCart(c : Customer, r : Restaurant, itemId : String, qty : int) : void
+  + placeOrder(c : Customer, coupon : String, ps : PaymentStrategy) : Order
+  + cancelOrder(c : Customer, orderId : String) : void
+  + acceptOrder(orderId : String) : void
+  + rejectOrder(orderId : String, reason : String) : void
+  + startPreparing(orderId : String) : void
+  + markReady(orderId : String) : void
+  + pickUp(p : DeliveryPartner, orderId : String) : void
+  + deliver(p : DeliveryPartner, orderId : String) : void
+}
+
+FoodDeliverySystem --> RestaurantService
+FoodDeliverySystem --> DeliveryService
+FoodDeliverySystem --> OrderService
+
+@enduml

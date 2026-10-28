@@ -1,0 +1,45 @@
+@startuml
+actor Payer
+actor Friend
+participant SplitwiseSystem as SW
+participant ExpenseService as ES
+participant SplitStrategyFactory as F
+participant SplitStrategy as S
+participant "Global\nBalanceSheet" as GB
+participant "Group\nBalanceSheet" as GrB
+participant NotificationService as NS
+
+== Add expense ==
+Payer -> SW : addExpense(group, desc, amount, paidBy, users, type, values)
+SW -> ES : addExpense(... amount in paise ...)
+ES -> ES : amount > 0, no duplicates,\neveryone is in the group
+ES -> F : get(type)
+F --> ES : Equal / Exact / Percent / Share strategy
+ES -> S : split(total, users, values)
+note right of S : validate (exact sums to total,\npercents sum to 100)\nsplit in paise, leftover paise\ngiven out one by one
+S --> ES : List<Split>
+loop each split where user != payer
+  ES -> GB : record(payer, user, amount)
+  ES -> GrB : record(payer, user, amount)
+  note right of GrB : synchronized\nowedTo[payer][user] += amount\nowedTo[user][payer] -= amount
+end
+ES -> NS : notify(each participant, "you owe Rs X")
+NS -> Friend : notification
+
+== Settle up ==
+Friend -> SW : settleUp(friend, payer, amount, group)
+SW -> ES : settleUp(...)
+group synchronized(group sheet)
+  ES -> GrB : owes(friend, payer)
+  ES -> ES : owed > 0 and amount <= owed?
+  ES -> GrB : record(friend, payer, amount)
+  ES -> GB : record(friend, payer, amount)
+end
+ES -> NS : notify(payer, "friend paid you")
+
+== Simplify ==
+Payer -> SW : simplify(group)
+SW -> GrB : simplify()
+GrB -> GrB : net per person;\nbiggest debtor pays biggest creditor,\nrepeat
+GrB --> Payer : List<Transfer> (at most n - 1)
+@enduml

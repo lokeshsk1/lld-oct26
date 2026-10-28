@@ -1,0 +1,123 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * email : VARCHAR(150) <<UNIQUE>>
+  * phone : VARCHAR(20)
+  * role : ENUM('CUSTOMER','ADMIN')
+  * created_at : TIMESTAMP
+}
+
+entity "movies" as movies {
+  * id : BIGINT <<PK>>
+  --
+  * title : VARCHAR(200)
+  * language : VARCHAR(50)
+  * genre : VARCHAR(50)
+  * duration_mins : INT
+}
+
+entity "cinemas" as cinemas {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(150)
+  * city : VARCHAR(100) <<INDEX>>
+  * address : VARCHAR(255)
+}
+
+entity "screens" as screens {
+  * id : BIGINT <<PK>>
+  --
+  * cinema_id : BIGINT <<FK>>
+  * name : VARCHAR(50)
+}
+
+entity "seats" as seats {
+  * id : BIGINT <<PK>>
+  --
+  * screen_id : BIGINT <<FK>>
+  * row_label : VARCHAR(5)
+  * seat_number : INT
+  * type : ENUM('SILVER','GOLD','PLATINUM')
+  ..
+  UNIQUE(screen_id, row_label, seat_number)
+}
+
+entity "shows" as shows {
+  * id : BIGINT <<PK>>
+  --
+  * movie_id : BIGINT <<FK>>
+  * screen_id : BIGINT <<FK>>
+  * start_time : TIMESTAMP
+  * end_time : TIMESTAMP
+  ..
+  INDEX(movie_id, start_time)
+}
+
+entity "show_prices" as show_prices {
+  * show_id : BIGINT <<PK, FK>>
+  * seat_type : ENUM('SILVER','GOLD','PLATINUM') <<PK>>
+  --
+  * price : DECIMAL(10,2)
+}
+
+entity "show_seats" as show_seats {
+  * id : BIGINT <<PK>>
+  --
+  * show_id : BIGINT <<FK>>
+  * seat_id : BIGINT <<FK>>
+  * status : ENUM('AVAILABLE','LOCKED','BOOKED')
+  locked_by : BIGINT <<FK users>>
+  lock_expires_at : TIMESTAMP
+  * version : INT
+  ..
+  UNIQUE(show_id, seat_id)
+}
+
+entity "bookings" as bookings {
+  * id : BIGINT <<PK>>
+  --
+  * user_id : BIGINT <<FK>>
+  * show_id : BIGINT <<FK>>
+  * total_amount : DECIMAL(10,2)
+  * status : ENUM('PENDING','CONFIRMED','CANCELLED','EXPIRED')
+  * created_at : TIMESTAMP
+}
+
+entity "booking_seats" as booking_seats {
+  * booking_id : BIGINT <<PK, FK>>
+  * show_seat_id : BIGINT <<PK, FK>>
+  --
+  * price : DECIMAL(10,2)
+}
+
+entity "payments" as payments {
+  * id : BIGINT <<PK>>
+  --
+  * booking_id : BIGINT <<FK>>
+  * amount : DECIMAL(10,2)
+  * method : ENUM('CARD','UPI','WALLET')
+  * status : ENUM('PENDING','SUCCESS','FAILED','REFUNDED')
+  transaction_ref : VARCHAR(100)
+  * created_at : TIMESTAMP
+}
+
+cinemas ||--o{ screens
+screens ||--|{ seats
+movies ||--o{ shows
+screens ||--o{ shows
+shows ||--|{ show_prices
+shows ||--|{ show_seats
+seats ||--o{ show_seats
+users ||--o{ bookings
+shows ||--o{ bookings
+bookings ||--|{ booking_seats
+show_seats ||--o{ booking_seats
+bookings ||--o{ payments
+
+@enduml

@@ -1,0 +1,111 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * email : VARCHAR(150) <<UNIQUE>>
+  * role : ENUM('MEMBER','MODERATOR')
+  * reputation : INT
+  * created_at : TIMESTAMP
+  ..
+  CHECK(reputation >= 1)
+}
+
+entity "posts" as posts {
+  * id : BIGINT <<PK>>
+  --
+  * post_type : ENUM('QUESTION','ANSWER')
+  parent_id : BIGINT <<FK posts>>
+  * author_id : BIGINT <<FK>>
+  title : VARCHAR(300)
+  * body : TEXT
+  * score : INT
+  view_count : INT
+  accepted_answer_id : BIGINT <<FK posts>>
+  status : ENUM('OPEN','CLOSED')
+  close_reason : VARCHAR(200)
+  * created_at : TIMESTAMP
+  * last_activity_at : TIMESTAMP
+  ..
+  INDEX(parent_id)
+  INDEX(post_type, score)
+  INDEX(post_type, last_activity_at)
+  FULLTEXT(title, body)
+}
+
+entity "tags" as tags {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(35) <<UNIQUE>>
+  * question_count : INT
+}
+
+entity "post_tags" as post_tags {
+  * post_id : BIGINT <<PK, FK>>
+  * tag_id : BIGINT <<PK, FK>>
+  ..
+  INDEX(tag_id, post_id)
+}
+
+entity "votes" as votes {
+  * post_id : BIGINT <<PK, FK>>
+  * user_id : BIGINT <<PK, FK>>
+  --
+  * vote_type : SMALLINT  (+1 / -1)
+  * created_at : TIMESTAMP
+}
+
+entity "comments" as comments {
+  * id : BIGINT <<PK>>
+  --
+  * post_id : BIGINT <<FK>>
+  * author_id : BIGINT <<FK>>
+  * body : VARCHAR(600)
+  * created_at : TIMESTAMP
+  ..
+  INDEX(post_id)
+}
+
+entity "badges" as badges {
+  * id : INT <<PK>>
+  --
+  * name : VARCHAR(50) <<UNIQUE>>
+  * description : VARCHAR(200)
+}
+
+entity "user_badges" as user_badges {
+  * user_id : BIGINT <<PK, FK>>
+  * badge_id : INT <<PK, FK>>
+  --
+  * awarded_at : TIMESTAMP
+}
+
+entity "reputation_history" as rep_history {
+  * id : BIGINT <<PK>>
+  --
+  * user_id : BIGINT <<FK>>
+  * delta : INT
+  * reason : VARCHAR(30)
+  post_id : BIGINT <<FK>>
+  * created_at : TIMESTAMP
+  ..
+  INDEX(user_id, created_at)
+}
+
+users ||--o{ posts : author
+posts |o--o{ posts : answers (parent_id)
+posts ||--o{ post_tags
+tags ||--o{ post_tags
+posts ||--o{ votes
+users ||--o{ votes
+posts ||--o{ comments
+users ||--o{ comments
+users ||--o{ user_badges
+badges ||--o{ user_badges
+users ||--o{ rep_history
+
+@enduml

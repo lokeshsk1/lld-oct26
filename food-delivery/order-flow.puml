@@ -1,0 +1,66 @@
+@startuml
+actor Customer
+participant FoodDeliverySystem as FDS
+participant OrderService as OS
+participant Cart
+participant MenuItem
+participant PaymentStrategy as Pay
+participant DeliveryService as DS
+participant DeliveryPartner as DP
+participant NotificationService as NS
+actor Restaurant
+
+== Browse + cart ==
+Customer -> FDS : searchRestaurants(location, radius)
+Customer -> FDS : addToCart(restaurant, item, qty)
+FDS -> Cart : add(...)
+note right of Cart : rejects items from\na second restaurant
+
+== Place order ==
+Customer -> FDS : placeOrder(coupon, paymentMethod)
+FDS -> OS : placeOrder(...)
+group synchronized(cart)
+  OS -> OS : restaurant open?\nbuild Bill (fee strategy, tax, coupon)
+  loop each cart item
+    OS -> MenuItem : tryReserve(qty)
+    note right of MenuItem : synchronized\nstock check + decrement
+  end
+  alt an item is sold out
+    OS -> MenuItem : release(already reserved)
+    OS --> Customer : sold out
+  end
+  OS -> Pay : pay(total)
+  alt payment failed
+    OS -> MenuItem : release(all)
+    OS --> Customer : payment failed (cart kept)
+  else paid
+    OS -> Cart : clear()
+  end
+end
+OS -> NS : notify(restaurant, "New order")
+NS -> Restaurant : new order
+
+== Restaurant accepts ==
+Restaurant -> FDS : acceptOrder(orderId)
+FDS -> OS : accept  (PLACED -> ACCEPTED)
+OS -> DS : assign(order)
+DS -> DS : rank available partners near restaurant
+loop ranked partners
+  DS -> DP : tryAssign()
+  note right of DP : synchronized\nAVAILABLE -> BUSY
+end
+alt partner found
+  DS -> NS : notify(partner, "Pick up at ...")
+else nobody free
+  DS -> DS : add order to waiting queue
+end
+
+== Cook + deliver ==
+Restaurant -> FDS : startPreparing / markReady
+DP -> FDS : pickUp(orderId)  (READY -> PICKED_UP)
+DP -> FDS : deliver(orderId)  (PICKED_UP -> DELIVERED)
+FDS -> OS : deliver
+OS -> DP : completeDelivery(customer address)
+OS -> DS : onPartnerAvailable(partner)
+DS -> DS : give partner the oldest waiting order
+@enduml

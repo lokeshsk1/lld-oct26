@@ -1,0 +1,129 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum BookItemStatus {
+  AVAILABLE
+  LOANED
+}
+
+' ===== Book & BookItem =====
+class Book {
+  - isbn : String
+  - title : String
+  - author : String
+}
+
+class BookItem {
+  - barcode : String
+  - book : Book
+  - status : BookItemStatus
+  + tryCheckout() : boolean
+  + markAvailable() : void
+}
+
+Book "1" -- "many" BookItem : copies
+BookItem --> BookItemStatus
+
+' ===== Member & Loan =====
+class Member {
+  - id : String
+  - name : String
+  - email : String
+  - activeLoans : List<Loan>
+  + addLoan(l : Loan) : void
+  + removeLoan(l : Loan) : void
+}
+
+class Loan {
+  - id : String
+  - item : BookItem
+  - member : Member
+  - issueDate : LocalDate
+  - dueDate : LocalDate
+  - returnDate : LocalDate
+  + close(on : LocalDate) : void
+  + isActive() : boolean
+}
+
+Member "1" --> "many" Loan : borrows
+Loan --> BookItem
+
+' ===== Search (Strategy) =====
+interface SearchStrategy {
+  + matches(book : Book, query : String) : boolean
+}
+class TitleSearch
+class AuthorSearch
+class IsbnSearch
+
+SearchStrategy <|.. TitleSearch
+SearchStrategy <|.. AuthorSearch
+SearchStrategy <|.. IsbnSearch
+
+' ===== Extension point (Observer) =====
+interface LoanListener {
+  + onBorrow(loan : Loan) : void
+  + onReturn(loan : Loan) : void
+}
+class ConsoleNotifier
+
+LoanListener <|.. ConsoleNotifier
+
+' ===== Services =====
+class CatalogService {
+  - books : Map<String, Book>
+  - items : Map<String, BookItem>
+  + addBook(b : Book) : void
+  + addItem(item : BookItem) : void
+  + search(s : SearchStrategy, query : String) : List<Book>
+  + getAvailableCopies(b : Book) : List<BookItem>
+  + getItem(barcode : String) : BookItem
+}
+
+class MemberService {
+  - members : Map<String, Member>
+  + register(m : Member) : void
+  + getMember(id : String) : Member
+}
+
+class LoanService {
+  - activeLoans : Map<String, Loan>
+  - history : List<Loan>
+  - listeners : List<LoanListener>
+  + borrow(m : Member, item : BookItem) : Loan
+  + returnBook(item : BookItem) : Loan
+  + getActiveLoan(barcode : String) : Loan
+  + addListener(l : LoanListener) : void
+}
+
+CatalogService --> Book
+CatalogService --> BookItem
+CatalogService ..> SearchStrategy
+MemberService --> Member
+LoanService --> Loan
+LoanService o-- LoanListener
+
+' ===== Facade + Singleton =====
+class LibrarySystem <<Singleton>> {
+  - {static} instance : LibrarySystem
+  - catalog : CatalogService
+  - members : MemberService
+  - loans : LoanService
+  + {static} getInstance() : LibrarySystem
+  + addBook(b : Book) : void
+  + addCopy(item : BookItem) : void
+  + registerMember(m : Member) : void
+  + search(s : SearchStrategy, query : String) : List<Book>
+  + borrow(memberId : String, barcode : String) : Loan
+  + returnBook(barcode : String) : Loan
+  + loansOf(memberId : String) : List<Loan>
+  + whoHas(barcode : String) : Loan
+}
+
+LibrarySystem --> CatalogService
+LibrarySystem --> MemberService
+LibrarySystem --> LoanService
+
+@enduml

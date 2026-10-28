@@ -1,0 +1,30 @@
+@startuml
+!pragma layout smetana
+hide empty description
+
+[*] --> Placed : customer pays
+
+state Placed : restaurant decides
+state Accepted : partner being assigned
+state Preparing : kitchen cooking
+state ReadyForPickup : waiting for partner
+state PickedUp : on the way
+state Delivered
+state Cancelled : stock restored,\npayment refunded,\npartner freed
+
+Placed --> Accepted : restaurant accepts\n/ assign partner (or queue)
+Placed --> Cancelled : restaurant rejects\nor customer cancels
+Accepted --> Preparing : restaurant starts cooking
+Accepted --> Cancelled : customer cancels
+Preparing --> ReadyForPickup : food ready
+ReadyForPickup --> PickedUp : assigned partner picks up
+PickedUp --> Delivered : partner delivers\n/ partner free, takes next waiting order
+
+Delivered --> [*]
+Cancelled --> [*]
+
+note right of Preparing
+  No cancel from here on:
+  food is already being made
+end note
+@enduml

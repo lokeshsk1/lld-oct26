@@ -1,0 +1,62 @@
+@startuml
+actor Customer
+participant ATM
+participant "ATMState\n(current)" as State
+participant BankService as Bank
+participant CashDispenser as CD
+participant "NoteDispenser\nchain" as Chain
+participant Account
+participant NotificationObserver as NO
+
+== Card + PIN ==
+Customer -> ATM : insertCard(card)
+ATM -> State : insertCard  (IdleState)
+State -> Bank : validateCard(card)
+Bank --> State : ok (known, active, not expired)
+State -> ATM : setState(CardInserted)
+
+Customer -> ATM : enterPin(pin)
+ATM -> State : enterPin  (CardInsertedState)
+State -> Bank : authenticate(card, pin)
+alt PIN correct
+  Bank --> State : true
+  State -> ATM : setState(Authenticated)
+else wrong PIN
+  Bank --> State : false (failedAttempts++)
+  note right of Bank : 3rd failure ->\ncard BLOCKED
+  State --> Customer : retry / card retained
+end
+
+== Withdraw ==
+Customer -> ATM : withdraw(amount)
+ATM -> State : withdraw  (AuthenticatedState)
+State -> State : amount > 0 and multiple of 100?
+State -> CD : reserve(amount)
+CD -> Chain : plan(amount)  500 -> 200 -> 100
+Chain --> CD : note breakdown / null
+alt ATM can't make the amount
+  CD --> State : null
+  State --> Customer : ATM cannot dispense
+else notes reserved
+  CD --> State : notes
+  State -> Bank : withdraw(account, amount)
+  Bank -> Account : withdraw(amount)
+  note right of Account : synchronized\nbalance + daily limit\ncheck and debit
+  alt approved
+    Account --> Bank : ok
+    Bank -> Bank : record Transaction(SUCCESS)
+    Bank -> NO : notify("Rs X withdrawn")
+    State --> Customer : dispense notes
+  else insufficient balance / limit
+    Account --> Bank : error
+    Bank -> Bank : record Transaction(FAILED)
+    State -> CD : restore(notes)
+    State --> Customer : rejected
+  end
+end
+
+== End ==
+Customer -> ATM : ejectCard()
+ATM -> State : ejectCard  (AuthenticatedState)
+State -> ATM : endSession() -> Idle
+@enduml

@@ -1,0 +1,170 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum MeetingStatus {
+  SCHEDULED
+  CANCELLED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+' ===== Interval =====
+class Interval {
+  - start : LocalDateTime
+  - end : LocalDateTime
+  + overlaps(other : Interval) : boolean
+  + duration() : Duration
+}
+
+' ===== User & Calendar =====
+class User {
+  - id : String
+  - name : String
+  - email : String
+  - calendar : UserCalendar
+}
+
+class UserCalendar {
+  - meetings : List<Meeting>
+  + add(m : Meeting) : void
+  + remove(m : Meeting) : void
+  + isFree(interval : Interval) : boolean
+  + getBusyIntervals(day : LocalDate) : List<Interval>
+}
+
+User "1" *-- "1" UserCalendar
+UserCalendar "1" o-- "many" Meeting
+
+' ===== MeetingRoom =====
+class MeetingRoom {
+  - id : String
+  - name : String
+  - capacity : int
+  - floor : int
+  - bookedSlots : List<Interval>
+  + isAvailable(interval : Interval) : boolean
+  + tryBook(interval : Interval) : boolean
+  + release(interval : Interval) : void
+  + tryMove(from : Interval, to : Interval) : boolean
+}
+
+MeetingRoom "1" o-- "many" Interval
+
+' ===== Meeting & Invitation =====
+class Meeting {
+  - id : String
+  - title : String
+  - organizer : User
+  - room : MeetingRoom
+  - interval : Interval
+  - status : MeetingStatus
+  - invitations : Map<String, Invitation>
+  + getInvitation(user : User) : Invitation
+  + getInvitees() : List<User>
+  + headCount() : int
+  + cancel() : void
+  + reschedule(room : MeetingRoom, interval : Interval) : void
+}
+
+class Invitation {
+  - participant : User
+  - status : InvitationStatus
+  + accept() : void
+  + decline() : void
+  + reset() : void
+}
+
+Meeting --> User : organizer
+Meeting --> MeetingRoom
+Meeting --> Interval
+Meeting --> MeetingStatus
+Meeting "1" *-- "many" Invitation
+Invitation --> User : participant
+Invitation --> InvitationStatus
+
+' ===== Room selection (Strategy) =====
+interface RoomSelectionStrategy {
+  + rank(freeRooms : List<MeetingRoom>, headCount : int) : List<MeetingRoom>
+}
+class BestFitStrategy
+class FirstAvailableStrategy
+class FloorPreferenceStrategy {
+  - preferredFloor : int
+}
+
+RoomSelectionStrategy <|.. BestFitStrategy
+RoomSelectionStrategy <|.. FirstAvailableStrategy
+RoomSelectionStrategy <|.. FloorPreferenceStrategy
+
+' ===== Notification (Observer) =====
+interface NotificationObserver {
+  + notify(recipient : User, message : String) : void
+}
+class EmailNotifier
+class SlackNotifier
+
+NotificationObserver <|.. EmailNotifier
+NotificationObserver <|.. SlackNotifier
+
+' ===== Services =====
+class RoomService {
+  - rooms : List<MeetingRoom>
+  + addRoom(room : MeetingRoom) : void
+  + findAvailableRooms(interval : Interval, headCount : int) : List<MeetingRoom>
+}
+
+class CalendarService {
+  + getBusyUsers(users : List<User>, interval : Interval) : List<User>
+  + findCommonFreeSlot(users : List<User>, day : LocalDate, length : Duration, dayStart : LocalTime, dayEnd : LocalTime) : Optional<Interval>
+}
+
+class MeetingService {
+  - meetings : Map<String, Meeting>
+  - roomService : RoomService
+  - roomStrategy : RoomSelectionStrategy
+  - observers : List<NotificationObserver>
+  + scheduleMeeting(organizer : User, title : String, invitees : List<User>, interval : Interval) : Meeting
+  + respond(meetingId : String, user : User, accept : boolean) : void
+  + cancelMeeting(meetingId : String, requester : User) : void
+  + rescheduleMeeting(meetingId : String, requester : User, interval : Interval) : Meeting
+  + setRoomStrategy(s : RoomSelectionStrategy) : void
+  + addObserver(o : NotificationObserver) : void
+  - bookRoom(interval : Interval, headCount : int) : MeetingRoom
+}
+
+RoomService --> MeetingRoom
+CalendarService ..> User
+MeetingService --> RoomService
+MeetingService --> RoomSelectionStrategy
+MeetingService o-- NotificationObserver
+MeetingService --> Meeting
+
+' ===== Facade + Singleton =====
+class MeetingSchedulerSystem <<Singleton>> {
+  - {static} instance : MeetingSchedulerSystem
+  - roomService : RoomService
+  - calendarService : CalendarService
+  - meetingService : MeetingService
+  - MeetingSchedulerSystem()
+  + {static} getInstance() : MeetingSchedulerSystem
+  + addRoom(room : MeetingRoom) : void
+  + findAvailableRooms(i : Interval, headCount : int) : List<MeetingRoom>
+  + getBusyUsers(users : List<User>, i : Interval) : List<User>
+  + findCommonFreeSlot(users : List<User>, day : LocalDate, length : Duration) : Optional<Interval>
+  + schedule(organizer : User, title : String, invitees : List<User>, i : Interval) : Meeting
+  + respond(meetingId : String, user : User, accept : boolean) : void
+  + reschedule(meetingId : String, requester : User, i : Interval) : Meeting
+  + cancel(meetingId : String, requester : User) : void
+}
+
+MeetingSchedulerSystem --> RoomService
+MeetingSchedulerSystem --> CalendarService
+MeetingSchedulerSystem --> MeetingService
+
+@enduml

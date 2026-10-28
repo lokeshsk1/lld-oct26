@@ -1,0 +1,193 @@
+@startuml
+skinparam classAttributeIconSize 0
+!pragma layout smetana
+
+' ===== Enums =====
+enum RoomType {
+  SINGLE
+  DOUBLE
+  DELUXE
+  SUITE
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+' ===== Users =====
+abstract class User {
+  - id : String
+  - name : String
+  - email : String
+  - phone : String
+}
+
+class Guest {
+  - bookings : List<Booking>
+  + getBookings() : List<Booking>
+}
+
+class Admin {
+  + addRoom(hotel : Hotel, room : Room) : void
+}
+
+User <|-- Guest
+User <|-- Admin
+
+' ===== Hotel & Room =====
+class Hotel {
+  - id : String
+  - name : String
+  - city : String
+  - address : String
+  - rooms : List<Room>
+  + addRoom(room : Room) : void
+  + getAvailableRooms(range : DateRange, type : RoomType) : List<Room>
+}
+
+class Room {
+  - id : String
+  - roomNumber : String
+  - type : RoomType
+  - basePrice : double
+  - capacity : int
+  - bookedRanges : List<DateRange>
+  + isAvailable(range : DateRange) : boolean
+  + tryBook(range : DateRange) : boolean
+  + release(range : DateRange) : void
+}
+
+class DateRange {
+  - checkIn : LocalDate
+  - checkOut : LocalDate
+  + overlaps(other : DateRange) : boolean
+  + nights() : long
+}
+
+Hotel "1" *-- "many" Room
+Room --> RoomType
+Room "1" o-- "many" DateRange
+
+' ===== Booking =====
+class Booking {
+  - id : String
+  - guest : Guest
+  - hotel : Hotel
+  - rooms : List<Room>
+  - dateRange : DateRange
+  - totalAmount : double
+  - status : BookingStatus
+  - payment : Payment
+  + confirm() : void
+  + cancel() : void
+}
+
+Guest "1" --> "many" Booking : makes
+Booking "1" --> "1..*" Room
+Booking --> DateRange
+Booking --> BookingStatus
+Booking "1" --> "1" Payment
+
+' ===== Payment (Strategy) =====
+class Payment {
+  - id : String
+  - amount : double
+  - status : PaymentStatus
+  - strategy : PaymentStrategy
+  + process() : boolean
+  + refund(amount : double) : boolean
+}
+
+interface PaymentStrategy {
+  + pay(amount : double) : boolean
+  + refund(amount : double) : boolean
+}
+
+class CardPayment
+class UpiPayment
+class WalletPayment
+
+Payment --> PaymentStatus
+Payment --> PaymentStrategy
+PaymentStrategy <|.. CardPayment
+PaymentStrategy <|.. UpiPayment
+PaymentStrategy <|.. WalletPayment
+
+' ===== Pricing (Strategy) =====
+interface PricingStrategy {
+  + calculate(room : Room, range : DateRange) : double
+}
+class NormalPricing
+class WeekendPricing
+class SeasonalPricing
+
+PricingStrategy <|.. NormalPricing
+PricingStrategy <|.. WeekendPricing
+PricingStrategy <|.. SeasonalPricing
+
+' ===== Notification (Observer) =====
+interface NotificationObserver {
+  + notify(booking : Booking, message : String) : void
+}
+class EmailNotifier
+class SmsNotifier
+
+NotificationObserver <|.. EmailNotifier
+NotificationObserver <|.. SmsNotifier
+
+' ===== Services =====
+class SearchService {
+  - hotels : List<Hotel>
+  + addHotel(hotel : Hotel) : void
+  + search(city : String, range : DateRange, guests : int) : List<Hotel>
+}
+
+class BookingService {
+  - bookings : Map<String, Booking>
+  - pricingStrategy : PricingStrategy
+  - observers : List<NotificationObserver>
+  + createBooking(guest : Guest, hotel : Hotel, rooms : List<Room>, range : DateRange, ps : PaymentStrategy) : Booking
+  + cancelBooking(bookingId : String) : void
+  + setPricingStrategy(p : PricingStrategy) : void
+  + addObserver(o : NotificationObserver) : void
+  - notifyAll(b : Booking, msg : String) : void
+}
+
+class PaymentService {
+  + makePayment(amount : double, ps : PaymentStrategy) : Payment
+  + refund(payment : Payment, amount : double) : boolean
+}
+
+BookingService --> PricingStrategy
+BookingService --> PaymentService
+BookingService o-- NotificationObserver
+BookingService --> Booking
+SearchService --> Hotel
+
+' ===== Facade + Singleton =====
+class HotelBookingSystem <<Singleton>> {
+  - {static} instance : HotelBookingSystem
+  - searchService : SearchService
+  - bookingService : BookingService
+  - HotelBookingSystem()
+  + {static} getInstance() : HotelBookingSystem
+  + addHotel(hotel : Hotel) : void
+  + searchHotels(city : String, range : DateRange, guests : int) : List<Hotel>
+  + bookRooms(...) : Booking
+  + cancel(bookingId : String) : void
+}
+
+HotelBookingSystem --> SearchService
+HotelBookingSystem --> BookingService
+
+@enduml

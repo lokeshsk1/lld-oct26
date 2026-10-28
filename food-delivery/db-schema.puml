@@ -1,0 +1,142 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * phone : VARCHAR(20) <<UNIQUE>>
+  * role : ENUM('CUSTOMER','PARTNER','RESTAURANT_OWNER')
+}
+
+entity "addresses" as addresses {
+  * id : BIGINT <<PK>>
+  --
+  * user_id : BIGINT <<FK>>
+  * label : VARCHAR(30)
+  * line : VARCHAR(255)
+  * lat : DECIMAL(9,6)
+  * lng : DECIMAL(9,6)
+}
+
+entity "restaurants" as restaurants {
+  * id : BIGINT <<PK>>
+  --
+  * owner_id : BIGINT <<FK>>
+  * name : VARCHAR(150)
+  * cuisine : VARCHAR(50)
+  * lat : DECIMAL(9,6)
+  * lng : DECIMAL(9,6)
+  * is_open : BOOLEAN
+  ..
+  INDEX(lat, lng)
+}
+
+entity "menu_items" as menu_items {
+  * id : BIGINT <<PK>>
+  --
+  * restaurant_id : BIGINT <<FK>>
+  * name : VARCHAR(150)
+  * price : DECIMAL(8,2)
+  * is_veg : BOOLEAN
+  stock : INT
+  * is_available : BOOLEAN
+  ..
+  CHECK(stock IS NULL OR stock >= 0)
+}
+
+entity "cart_items" as cart_items {
+  * customer_id : BIGINT <<PK, FK>>
+  * menu_item_id : BIGINT <<PK, FK>>
+  --
+  * qty : INT
+}
+
+entity "delivery_partners" as partners {
+  * user_id : BIGINT <<PK, FK>>
+  --
+  * vehicle_number : VARCHAR(15)
+  * status : ENUM('OFFLINE','AVAILABLE','BUSY')
+  current_lat : DECIMAL(9,6)
+  current_lng : DECIMAL(9,6)
+  * deliveries_today : INT
+}
+
+entity "orders" as orders {
+  * id : BIGINT <<PK>>
+  --
+  * customer_id : BIGINT <<FK>>
+  * restaurant_id : BIGINT <<FK>>
+  partner_id : BIGINT <<FK>>
+  * address_id : BIGINT <<FK>>
+  * status : ENUM('PLACED','ACCEPTED','PREPARING',\n'READY_FOR_PICKUP','PICKED_UP','DELIVERED','CANCELLED')
+  * subtotal : DECIMAL(10,2)
+  * delivery_fee : DECIMAL(8,2)
+  * tax : DECIMAL(8,2)
+  * discount : DECIMAL(8,2)
+  * total : DECIMAL(10,2)
+  coupon_code : VARCHAR(30) <<FK>>
+  * placed_at : TIMESTAMP
+  delivered_at : TIMESTAMP
+  ..
+  INDEX(customer_id, placed_at)
+  INDEX(restaurant_id, status)
+  INDEX(status, partner_id)
+}
+
+entity "order_items" as order_items {
+  * order_id : BIGINT <<PK, FK>>
+  * menu_item_id : BIGINT <<PK, FK>>
+  --
+  * name : VARCHAR(150)
+  * price : DECIMAL(8,2)
+  * qty : INT
+}
+
+entity "order_status_history" as history {
+  * id : BIGINT <<PK>>
+  --
+  * order_id : BIGINT <<FK>>
+  * status : VARCHAR(20)
+  * changed_at : TIMESTAMP
+}
+
+entity "coupons" as coupons {
+  * code : VARCHAR(30) <<PK>>
+  --
+  * type : ENUM('FLAT','PERCENT')
+  * value : DECIMAL(8,2)
+  max_discount : DECIMAL(8,2)
+  * min_order : DECIMAL(8,2)
+  valid_until : TIMESTAMP
+}
+
+entity "payments" as payments {
+  * id : BIGINT <<PK>>
+  --
+  * order_id : BIGINT <<FK>>
+  * amount : DECIMAL(10,2)
+  * method : ENUM('UPI','CARD','WALLET','COD')
+  * status : ENUM('PENDING','SUCCESS','FAILED','REFUNDED')
+  transaction_ref : VARCHAR(100)
+}
+
+users ||--o{ addresses
+users ||--o{ restaurants : owns
+restaurants ||--o{ menu_items
+users ||--o{ cart_items
+menu_items ||--o{ cart_items
+users ||--o| partners
+users ||--o{ orders : customer
+restaurants ||--o{ orders
+partners |o--o{ orders
+addresses ||--o{ orders
+orders ||--|{ order_items
+menu_items ||--o{ order_items
+orders ||--o{ history
+coupons |o--o{ orders
+orders ||--o{ payments
+
+@enduml

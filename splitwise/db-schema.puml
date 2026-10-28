@@ -1,0 +1,85 @@
+@startuml
+!pragma layout smetana
+hide circle
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * email : VARCHAR(150) <<UNIQUE>>
+  * created_at : TIMESTAMP
+}
+
+entity "groups" as groups {
+  * id : BIGINT <<PK>>
+  --
+  * name : VARCHAR(100)
+  * created_by : BIGINT <<FK>>
+  * created_at : TIMESTAMP
+}
+
+entity "group_members" as members {
+  * group_id : BIGINT <<PK, FK>>
+  * user_id : BIGINT <<PK, FK>>
+  --
+  * joined_at : TIMESTAMP
+}
+
+entity "expenses" as expenses {
+  * id : BIGINT <<PK>>
+  --
+  group_id : BIGINT <<FK>>
+  * description : VARCHAR(200)
+  * total_paise : BIGINT
+  * paid_by : BIGINT <<FK>>
+  * split_type : ENUM('EQUAL','EXACT','PERCENT','SHARE')
+  * is_deleted : BOOLEAN
+  * created_at : TIMESTAMP
+  ..
+  INDEX(group_id, created_at)
+  CHECK(total_paise > 0)
+}
+
+entity "expense_splits" as splits {
+  * expense_id : BIGINT <<PK, FK>>
+  * user_id : BIGINT <<PK, FK>>
+  --
+  * amount_paise : BIGINT
+  input_value : DECIMAL(10,3)
+}
+
+entity "settlements" as settlements {
+  * id : BIGINT <<PK>>
+  --
+  group_id : BIGINT <<FK>>
+  * from_user : BIGINT <<FK>>
+  * to_user : BIGINT <<FK>>
+  * amount_paise : BIGINT
+  * created_at : TIMESTAMP
+}
+
+entity "balances" as balances {
+  * group_id : BIGINT <<PK, FK>>  (0 = no group)
+  * user_a : BIGINT <<PK, FK>>
+  * user_b : BIGINT <<PK, FK>>
+  --
+  * amount_paise : BIGINT  (> 0: b owes a)
+  * version : BIGINT
+  ..
+  CHECK(user_a < user_b)
+}
+
+users ||--o{ groups : creates
+groups ||--|{ members
+users ||--o{ members
+groups |o--o{ expenses
+users ||--o{ expenses : paid_by
+expenses ||--|{ splits
+users ||--o{ splits
+groups |o--o{ settlements
+users ||--o{ settlements
+groups |o--o{ balances
+users ||--o{ balances
+
+@enduml
